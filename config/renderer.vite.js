@@ -11,7 +11,7 @@ module.exports = {
   root: join(process.cwd(), './src/renderer'),
   resolve: {
     alias: {
-      '/@/': join(process.cwd(), './src/renderer') + '/',
+      '~/': join(process.cwd(), './src/renderer') + '/',
     },
   },
   plugins: [

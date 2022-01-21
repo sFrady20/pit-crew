@@ -8,7 +8,7 @@ const { node } = require('./electron-dep-versions');
 module.exports = {
   resolve: {
     alias: {
-      '/@/': join(process.cwd(), './src/main') + '/',
+      '~/': join(process.cwd(), './src/main') + '/',
     },
   },
   build: {
