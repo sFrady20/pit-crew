@@ -1,0 +1,12 @@
+{
+  "extends": "../../config/tsconfig-base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "allowSyntheticDefaultImports": true,
+    "paths": {
+      "/@/*": ["./*"]
+    },
+    "types": ["../../types/importMeta", "electron-devtools-installer"]
+  },
+  "files": ["./index.ts"]
+}
