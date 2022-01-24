@@ -11,11 +11,13 @@ type SocketContextType = {
   gameState: GameStateType;
   reload: () => void;
   mergeGameState: (updates: any) => void;
+  submitScore: (session: any) => void;
 };
 const defaultSocketContext: SocketContextType = {
   gameState: {} as any,
-  mergeGameState: () => {},
   reload: () => {},
+  mergeGameState: () => {},
+  submitScore: () => {},
 };
 const SocketContext = createContext(defaultSocketContext);
 
@@ -51,23 +53,26 @@ const SocketProvider = (props: {
     };
   }, [ip, port, updateGameState]);
 
-  useEffect(() => {
-    console.log(gameState);
-  }, [gameState]);
-
   const reload = useCallback(() => {
     socketRef.current?.emit("requestState");
   }, [socketRef.current]);
 
   const mergeGameState = useCallback(
     (updates) => {
+      console.log({ updates });
       socketRef.current?.emit("mergeState", updates);
     },
     [socketRef.current]
   );
 
+  const submitScore = useCallback((session) => {
+    socketRef.current?.emit("submitScore", session);
+  }, []);
+
   return (
-    <SocketContext.Provider value={{ gameState, reload, mergeGameState }}>
+    <SocketContext.Provider
+      value={{ gameState, reload, mergeGameState, submitScore }}
+    >
       {children}
     </SocketContext.Provider>
   );

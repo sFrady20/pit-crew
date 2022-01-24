@@ -1,9 +1,17 @@
-import { app } from "electron";
+import { app, shell } from "electron";
 import serve from "electron-serve";
-import { merge } from "lodash";
+import { merge, sortBy } from "lodash";
 import { createWindow, createSocket } from "./helpers";
+import syncFile from "./helpers/file";
+import { DateTime } from "luxon";
 
 const isProd: boolean = process.env.NODE_ENV === "production";
+const paths = {
+  state: "./dt-pit-state.data",
+  leaderboard: "./dt-pit-leaders.data",
+  sessions: "./dt-pit-sessions.data",
+  export: "./dt-pit-export.data",
+};
 
 if (isProd) {
   serve({ directory: "app" });
@@ -14,25 +22,68 @@ if (isProd) {
 (async () => {
   const io = createSocket();
 
-  const gameState: any = {};
-
-  io.on("connection", (socket) => {
-    console.log("connected");
-
-    socket.on("requestState", () => {
-      socket.emit("setState", gameState);
+  //setup game state
+  {
+    let { data, enqueueSave } = syncFile<any>(paths.state, {});
+    io.on("connection", (socket) => {
+      socket.on("requestState", () => {
+        socket.emit("setState", data);
+      });
+      socket.on("mergeState", (arg) => {
+        const updates = typeof arg === "string" ? JSON.parse(arg) : arg;
+        merge(data, updates);
+        io.emit("setState", data);
+        enqueueSave();
+      });
     });
+  }
 
-    socket.on("mergeState", (arg) => {
-      const updates = typeof arg === "string" ? JSON.parse(arg) : arg;
-      merge(gameState, updates);
-      io.emit("setState", gameState);
-    });
+  //setup leaderboard
+  {
+    let { data, enqueueSave } = syncFile<any[]>(paths.leaderboard, []);
 
-    socket.on("disconnect", () => {
-      console.log("disconnected");
+    io.on("connection", (socket) => {
+      socket.on("requestLeaderboard", () => {
+        socket.emit("setLeaderboard", data);
+      });
+      socket.on("submitScore", (arg) => {
+        const score = typeof arg === "string" ? JSON.parse(arg) : arg;
+        const submissionTime = DateTime.now().toISOTime();
+        data.push({
+          ...score,
+          submissionTime,
+        });
+        sortBy(data, (d) =>
+          DateTime.fromISO(d.endTime)
+            .diff(DateTime.fromISO(d.startTime))
+            .toMillis()
+        );
+        //todo
+        enqueueSave();
+      });
     });
-  });
+  }
+
+  //setup sessions
+  {
+    let { data, enqueueSave } = syncFile<any[]>(paths.sessions, []);
+
+    io.on("connection", (socket) => {
+      socket.on("exportSessions", () => {
+        //TODO generate csv
+        shell.showItemInFolder(paths.export);
+      });
+      socket.on("submitScore", (arg) => {
+        const score = typeof arg === "string" ? JSON.parse(arg) : arg;
+        const submissionTime = DateTime.now().toISOTime();
+        data.push({
+          ...score,
+          submissionTime,
+        });
+        enqueueSave();
+      });
+    });
+  }
 
   await app.whenReady();
 
