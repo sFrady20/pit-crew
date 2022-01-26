@@ -112,6 +112,10 @@ const FormScreen = (props: { onComplete?: (form: FormState) => void }) => {
         variant="contained"
         className="self-center"
         onClick={() => onComplete && onComplete(form)}
+        sx={{
+          fontSize: "20px",
+          px: "2rem",
+        }}
       >
         START
       </Button>
