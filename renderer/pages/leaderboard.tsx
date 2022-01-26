@@ -1,69 +1,45 @@
-import React, { HTMLProps, useEffect, useRef, useState } from "react";
+import React from "react";
 import Head from "next/head";
-import {
-  SocketContext,
-  withSocket,
-  withSocketProps,
-} from "../components/Socket";
-import { useContext } from "use-context-selector";
+import { SocketContext, withSocket } from "../components/Socket";
+import { useContext, useContextSelector } from "use-context-selector";
 import { map, times } from "lodash";
 import { withMuiTheme } from "../components/MuiTheme";
+import Timer from "../components/Timer";
+import { LeaderboardContext, withLeaderboard } from "../components/Leaderboard";
 import { DateTime } from "luxon";
-
-const PlayerTimer = (
-  props: { playerIndex: number } & HTMLProps<HTMLDivElement>
-) => {
-  const { gameState } = useContext(SocketContext);
-  const { playerIndex, ...rest } = props;
-
-  const timerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!timerRef.current) return;
-
-    const interval = setInterval(() => {
-      const startTimeStr = gameState[`player-${playerIndex}`]?.startTime;
-      const endTimeStr = gameState[`player-${playerIndex}`]?.endTime;
-
-      if (!startTimeStr) {
-        timerRef.current.textContent = "00:00";
-      } else if (!endTimeStr) {
-        const startTime = DateTime.fromISO(startTimeStr);
-        let endTime = DateTime.now();
-        const diff = endTime.diff(startTime);
-        timerRef.current.textContent = diff.toFormat("mm:ss.S");
-      } else {
-        const startTime = DateTime.fromISO(startTimeStr);
-        let endTime = DateTime.fromISO(endTimeStr);
-        if (!endTime || endTime < startTime) endTime = DateTime.now();
-        const diff = endTime.diff(startTime);
-        timerRef.current.textContent = diff.toFormat("mm:ss.S");
-      }
-    }, 100);
-    return () => {
-      clearInterval(interval);
-    };
-  }, [
-    gameState[`player-${playerIndex}`]?.startTime,
-    gameState[`player-${playerIndex}`]?.endTime,
-    timerRef.current,
-  ]);
-
-  return <div {...rest} ref={timerRef}></div>;
-};
 
 const Player = (props: { playerIndex: number }) => {
   const { gameState } = useContext(SocketContext);
   const { playerIndex } = props;
 
-  const { numPlayers = 1 } = gameState;
+  const { players = [] } = gameState;
 
   return (
     <div className="flex-1 flex flex-col items-center p-5 border-width-1px border-black">
-      <PlayerTimer playerIndex={playerIndex} className="text-5xl font-bold" />
+      <Timer playerIndex={playerIndex} className="text-5xl font-bold" />
       <div className="text-xl font-bold">
-        {numPlayers > 1 ? `Player ${playerIndex + 1}` : `TIME`}
+        {players?.length > 1 ? `Player ${playerIndex + 1}` : `TIME`}
       </div>
+    </div>
+  );
+};
+
+const Leader = (props: { leader?: any; index: number }) => {
+  const { index, leader } = props;
+
+  const diff =
+    leader?.startTime &&
+    leader?.endTime &&
+    DateTime.fromISO(leader.endTime).diff(DateTime.fromISO(leader.startTime));
+
+  return (
+    <div
+      className={`py-3 px-8 ${
+        !(index % 2) && "bg-gray-400"
+      } flex flex-row justify-between text-3xl font-bold`}
+    >
+      <div>{`${index + 1}. ${leader?.form?.firstName || ""}`}</div>
+      <div>{diff ? diff.toFormat("mm:ss.S") : ""}</div>
     </div>
   );
 };
@@ -71,7 +47,9 @@ const Player = (props: { playerIndex: number }) => {
 const Leaderboard = () => {
   const { gameState, mergeGameState } = useContext(SocketContext);
 
-  const { numPlayers = 1 } = gameState;
+  const { players = [] }: { players: {}[] } = gameState;
+  const leaderboard =
+    useContextSelector(LeaderboardContext, (x) => x.leaderboard) || [];
 
   return (
     <>
@@ -79,18 +57,15 @@ const Leaderboard = () => {
         <title>Discount Tire - Leaderboard</title>
       </Head>
       <div className="flex flex-col items-center space-y-10">
-        <div className="flex flex-row w-full bg-cool-gray-400">
-          {map(times(numPlayers), (i) => (
-            <Player playerIndex={i} />
+        <div className="flex flex-row w-full divide-x-2 divide-black divide-solid border-b-2 border-solid border-black">
+          {map(players, (player, i) => (
+            <Player key={i} playerIndex={i} />
           ))}
         </div>
         <img src="/images/discount-tire.png" style={{ height: "150px" }} />
         <div className="w-full px-10">
           {map(times(10), (i) => (
-            <div
-              key={i}
-              className={`py-2 px-8 ${!(i % 2) && "bg-gray-400"}`}
-            >{`${i + 1}`}</div>
+            <Leader key={i} index={i} leader={leaderboard[i]} />
           ))}
         </div>
       </div>
@@ -98,8 +73,4 @@ const Leaderboard = () => {
   );
 };
 
-export const getServerSideProps = withSocketProps(() => {
-  return {};
-});
-
-export default withSocket(withMuiTheme(Leaderboard));
+export default withSocket(withLeaderboard(withMuiTheme(Leaderboard)));

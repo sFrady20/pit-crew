@@ -1,6 +1,5 @@
 appId: com.example.nextron
-productName: My Nextron App
-copyright: Copyright © 2018 Yoshihide Shiono
+productName: Discount Tires Pit Crew
 directories:
   output: dist
   buildResources: resources
@@ -8,5 +7,10 @@ files:
   - from: .
     filter:
       - package.json
+      - app/background.*
+extraFiles:
+  - from: .
+    filter:
       - app
+      - "!app/background.*"
 publish: null
