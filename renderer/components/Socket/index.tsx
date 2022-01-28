@@ -9,8 +9,6 @@ import React, {
 import io, { Socket } from "socket.io-client";
 import { createContext } from "use-context-selector";
 import { useImmer } from "use-immer";
-import ip from "ip";
-import { merge } from "lodash";
 import { URL } from "url";
 
 type GameStateType = any;
@@ -97,9 +95,12 @@ const SocketProvider = (props: { children?: ReactNode }) => {
     [socket]
   );
 
-  const exportSessions = useCallback(() => {
-    socket?.emit("exportSessions");
-  }, [socket]);
+  const exportSessions = useCallback(
+    (dates?: [Date, Date]) => {
+      socket?.emit("exportSessions", dates);
+    },
+    [socket]
+  );
 
   if (!socket)
     return (

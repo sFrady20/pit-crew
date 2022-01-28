@@ -2,12 +2,12 @@ import {
   Button,
   ButtonProps,
   Dialog,
-  DialogActions,
   DialogContent,
   DialogProps,
   TextField,
 } from "@mui/material";
 import { Draft } from "immer";
+import { forEach, some, values } from "lodash";
 import { DateTime, Duration } from "luxon";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import ReactInputMask from "react-input-mask";
@@ -32,9 +32,13 @@ const FormScreen = (props: { onComplete?: (form: FormState) => void }) => {
 
   const [form, updateForm] = useImmer<FormState>({});
   const df = gameState.disabledFields || {};
+  const rf = gameState.requiredFields || {};
+
+  const [requirements, setRequirements] = useState<{ [s: string]: any }>({});
 
   const formCtrl = (key: string) => ({
     value: form[key],
+    error: requirements[key],
     onChange: (e) => {
       const val = e.target.value;
       updateForm((x) => {
@@ -50,7 +54,7 @@ const FormScreen = (props: { onComplete?: (form: FormState) => void }) => {
           <div className="flex flex-row space-x-8">
             {!df.firstName && (
               <TextField
-                placeholder="FIRST NAME"
+                placeholder={`FIRST NAME`}
                 className="flex-1"
                 {...formCtrl("firstName")}
               />
@@ -111,7 +115,18 @@ const FormScreen = (props: { onComplete?: (form: FormState) => void }) => {
       <Button
         variant="contained"
         className="self-center"
-        onClick={() => onComplete && onComplete(form)}
+        onClick={() => {
+          let req: typeof requirements = {};
+          forEach(rf, (isRequired, field) => {
+            if (!isRequired) return;
+            if (!form[field]) req[field] = true;
+          });
+          if (some(values(req))) {
+            setRequirements(req);
+          } else {
+            onComplete && onComplete(form);
+          }
+        }}
         sx={{
           fontSize: "20px",
           px: "2rem",
@@ -215,6 +230,7 @@ const TabletPage = () => {
     const listener = () => {
       setPlayerId(parseInt(window.location.hash.slice(1)) - 1);
     };
+    listener();
     window.addEventListener("hashchange", listener);
     return () => {
       window.removeEventListener("hashchange", listener);
@@ -246,7 +262,11 @@ const TabletPage = () => {
         <div className="text-center font-bold">Player {playerId + 1}</div>
       </div>
       <div className="self-center">
-        <img src="/images/discount-tire.png" style={{ height: "150px" }} />
+        <img
+          src="/images/discount-tire.png"
+          style={{ height: "150px" }}
+          draggable={false}
+        />
       </div>
       {phase !== "form" && !!phase && (
         <div className="space-y-5 flex-col flex items-center">
@@ -287,41 +307,34 @@ const TabletPage = () => {
         </>
       ) : phase === "playing" ? (
         <>
-          <Button
-            onClick={() =>
-              updateSession((x) => {
-                x.endTime = DateTime.now().toISO();
-                x.phase = "finished";
-              })
-            }
-            sx={{
-              fontSize: "50px",
-              px: "2rem",
-            }}
+          <div
+            // onClick={() =>
+            //   updateSession((x) => {
+            //     x.endTime = DateTime.now().toISO();
+            //     x.phase = "finished";
+            //   })
+            // }
+            className="bg-black text-red-500 px-12 py-10 text-[50px] rounded-lg"
           >
             In Session
-          </Button>
+          </div>
           <ManualButton onClick={() => setManualDialogOpen((s) => !s)}>
             ENTER TIME
           </ManualButton>
         </>
       ) : phase === "ready" ? (
         <>
-          <Button
-            variant="contained"
-            onClick={() =>
-              updateSession((x) => {
-                x.startTime = DateTime.now().toISO();
-                x.phase = "playing";
-              })
-            }
-            sx={{
-              fontSize: "50px",
-              px: "2rem",
-            }}
+          <div
+            // onClick={() =>
+            //   updateSession((x) => {
+            //     x.startTime = DateTime.now().toISO();
+            //     x.phase = "playing";
+            //   })
+            // }
+            className="bg-black text-red-500 px-12 py-10 text-[50px] rounded-lg"
           >
             READY
-          </Button>
+          </div>
           <ManualButton onClick={() => setManualDialogOpen((s) => !s)}>
             ENTER TIME
           </ManualButton>

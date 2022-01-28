@@ -11,3 +11,7 @@
 /* Stop purging. */
 
 /* Your own custom utilities */
+
+* {
+  user-select: none;
+}

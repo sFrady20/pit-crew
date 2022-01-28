@@ -1,8 +1,26 @@
-import React from "react";
+import React, { useState } from "react";
 import Head from "next/head";
 import { SocketContext, withSocket } from "../components/Socket";
 import { useContext } from "use-context-selector";
-import { Button, Divider, Switch } from "@mui/material";
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogProps,
+  Divider,
+  Switch,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+} from "@mui/material";
+import { DateRange, StaticDateRangePicker } from "@mui/lab";
+import LuxonAdapter from "@mui/lab/AdapterLuxon";
+import LocalizationProvider from "@mui/lab/LocalizationProvider";
 import { dropRight, map } from "lodash";
 import Timer from "../components/Timer";
 import { withMuiTheme } from "../components/MuiTheme";
@@ -39,24 +57,87 @@ const Player = (props: { index: number }) => {
   );
 };
 
+const fields = {
+  firstName: "First Name",
+  lastName: "Last Name",
+  email: "Email",
+  address: "Address",
+  city: "City",
+  state: "State",
+  zip: "Zip",
+  phone: "Phone",
+};
+
+const ExportDialog = (props: DialogProps) => {
+  const { exportSessions } = useContext(SocketContext);
+
+  const { onClose, ...rest } = props;
+  const [dates, setDates] = useState<DateRange<Date>>([null, null]);
+
+  return (
+    <Dialog onClose={onClose} {...rest}>
+      <DialogContent>
+        <LocalizationProvider dateAdapter={LuxonAdapter}>
+          <StaticDateRangePicker
+            displayStaticWrapperAs="desktop"
+            calendars={1}
+            startText="Check-in"
+            endText="Check-out"
+            value={dates}
+            onChange={(newValue) => {
+              setDates(newValue);
+            }}
+            renderInput={(startProps, endProps) => (
+              <React.Fragment>
+                <TextField {...startProps} />
+                <Box sx={{ mx: 2 }}> to </Box>
+                <TextField {...endProps} />
+              </React.Fragment>
+            )}
+          />
+        </LocalizationProvider>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={(e) => onClose && onClose(e, "escapeKeyDown")}>
+          Cancel
+        </Button>
+        <Button variant="contained" onClick={() => exportSessions(dates)}>
+          Export
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 const Home = () => {
-  const { ip, gameState, mergeGameState, setInGameState, exportSessions } =
+  const { ip, gameState, mergeGameState, setInGameState } =
     useContext(SocketContext);
 
   const players: any[] = gameState.players || [];
   const df: { [s: string]: boolean | undefined } =
     gameState.disabledFields || {};
+  const rf: { [s: string]: boolean | undefined } =
+    gameState.requiredFields || {};
+
+  const [isExportDialogOpen, setExportDialogOpen] = useState(false);
 
   return (
     <>
       <Head>
         <title>Home</title>
       </Head>
+      <ExportDialog
+        open={isExportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
+      />
       <div className="p-4 space-y-8">
         <div className="flex flex-row justify-between items-center">
           <div className="bg-black hover:bg-white">{ip}</div>
           <div>
-            <Button variant="contained" onClick={() => exportSessions()}>
+            <Button
+              variant="contained"
+              onClick={() => setExportDialogOpen(true)}
+            >
               Export CSV
             </Button>
           </div>
@@ -94,78 +175,44 @@ const Home = () => {
         </div>
         <Divider>Fields</Divider>
         <div className="">
-          <div className="flex flex-row items-center space-x-8">
-            <Switch
-              checked={!df.firstName}
-              onChange={(e) =>
-                setInGameState(`disabledFields.firstName`, !e.target.checked)
-              }
-            />
-            <div>First Name</div>
-          </div>
-          <div className="flex flex-row items-center space-x-8">
-            <Switch
-              checked={!df.lastName}
-              onChange={(e) =>
-                setInGameState(`disabledFields.lastName`, !e.target.checked)
-              }
-            />
-            <div>Last Name</div>
-          </div>
-          <div className="flex flex-row items-center space-x-8">
-            <Switch
-              checked={!df.email}
-              onChange={(e) =>
-                setInGameState(`disabledFields.email`, !e.target.checked)
-              }
-            />
-            <div>Email</div>
-          </div>
-          <div className="flex flex-row items-center space-x-8">
-            <Switch
-              checked={!df.address}
-              onChange={(e) =>
-                setInGameState(`disabledFields.address`, !e.target.checked)
-              }
-            />
-            <div>Address</div>
-          </div>
-          <div className="flex flex-row items-center space-x-8">
-            <Switch
-              checked={!df.city}
-              onChange={(e) =>
-                setInGameState(`disabledFields.city`, !e.target.checked)
-              }
-            />
-            <div>City</div>
-          </div>
-          <div className="flex flex-row items-center space-x-8">
-            <Switch
-              checked={!df.state}
-              onChange={(e) =>
-                setInGameState(`disabledFields.state`, !e.target.checked)
-              }
-            />
-            <div>State</div>
-          </div>
-          <div className="flex flex-row items-center space-x-8">
-            <Switch
-              checked={!df.zip}
-              onChange={(e) =>
-                setInGameState(`disabledFields.zip`, !e.target.checked)
-              }
-            />
-            <div>Zip</div>
-          </div>
-          <div className="flex flex-row items-center space-x-8">
-            <Switch
-              checked={!df.phone}
-              onChange={(e) =>
-                setInGameState(`disabledFields.phone`, !e.target.checked)
-              }
-            />
-            <div>Phone</div>
-          </div>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell width={80}>Visible</TableCell>
+                <TableCell width={100}>Required</TableCell>
+                <TableCell>Field Name</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {map(fields, (label, key) => (
+                <TableRow>
+                  <TableCell>
+                    <Switch
+                      checked={!df[key]}
+                      onChange={(e) =>
+                        setInGameState(
+                          `disabledFields.${key}`,
+                          !e.target.checked
+                        )
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={rf[key]}
+                      onChange={(e) =>
+                        setInGameState(
+                          `requiredFields.${key}`,
+                          e.target.checked
+                        )
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>{label}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       </div>
     </>

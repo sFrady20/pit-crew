@@ -32,14 +32,23 @@ const Leader = (props: { leader?: any; index: number }) => {
     leader?.endTime &&
     DateTime.fromISO(leader.endTime).diff(DateTime.fromISO(leader.startTime));
 
+  const fn = leader?.form?.firstName;
+  const li = leader?.form?.lastName?.slice(0, 1);
+
   return (
     <div
       className={`py-3 px-8 ${
         !(index % 2) && "bg-gray-400"
       } flex flex-row justify-between text-3xl font-bold`}
     >
-      <div>{`${index + 1}. ${leader?.form?.firstName || ""}`}</div>
-      <div>{diff ? diff.toFormat("mm:ss.S") : ""}</div>
+      <div>{`${index + 1}.${fn ? ` ${fn}` : ``}${li ? ` ${li}.` : ``}`}</div>
+      <div>
+        {diff
+          ? `${diff.minutes > 0 ? `${diff.toFormat(`m`)}:` : ``}${
+              diff.minutes > 0 ? diff.toFormat(`ss`) : diff.toFormat(`s`)
+            }:${diff.toFormat("S").padEnd(3, "0").slice(0, 3)}`
+          : ``}
+      </div>
     </div>
   );
 };
@@ -62,7 +71,11 @@ const Leaderboard = () => {
             <Player key={i} playerIndex={i} />
           ))}
         </div>
-        <img src="/images/discount-tire.png" style={{ height: "150px" }} />
+        <img
+          src="/images/discount-tire.png"
+          style={{ height: "150px" }}
+          draggable={false}
+        />
         <div className="w-full px-10">
           {map(times(10), (i) => (
             <Leader key={i} index={i} leader={leaderboard[i]} />
