@@ -1,6 +1,7 @@
 import {
+  Autocomplete,
   Button,
-  ButtonProps,
+  Switch,
   Dialog,
   DialogContent,
   DialogProps,
@@ -9,7 +10,7 @@ import {
 import { Draft } from "immer";
 import { forEach, some, values } from "lodash";
 import { DateTime, Duration } from "luxon";
-import { ReactNode, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactInputMask from "react-input-mask";
 import { useContext } from "use-context-selector";
 import { useImmer } from "use-immer";
@@ -24,6 +25,7 @@ type SessionState = {
   startTime?: string;
   endTime?: string;
   form?: FormState;
+  manual?: boolean;
 };
 
 const FormScreen = (props: { onComplete?: (form: FormState) => void }) => {
@@ -68,12 +70,25 @@ const FormScreen = (props: { onComplete?: (form: FormState) => void }) => {
             )}
           </div>
         )}
-        {!df.email && (
-          <TextField
-            placeholder="EMAIL"
-            {...formCtrl("email")}
-            inputMode="email"
-          />
+        {(!df.email || !df.age) && (
+          <div className="flex flex-row space-x-8">
+            {!df.email && (
+              <TextField
+                placeholder="EMAIL"
+                {...formCtrl("email")}
+                inputMode="email"
+                className="flex-1"
+              />
+            )}
+            {!df.age && (
+              <TextField
+                placeholder="AGE"
+                {...formCtrl("age")}
+                type="number"
+                inputMode="numeric"
+              />
+            )}
+          </div>
         )}
         {!df.address && (
           <TextField placeholder="ADDRESS" {...formCtrl("address")} />
@@ -111,6 +126,49 @@ const FormScreen = (props: { onComplete?: (form: FormState) => void }) => {
             )}
           </div>
         )}
+        {(!df.vehicles || !df.store) && (
+          <div className="flex flex-row space-x-8">
+            {!df.store && (
+              <TextField
+                placeholder="Store"
+                className="flex-1"
+                {...formCtrl("store")}
+              />
+            )}
+            {!df.vehicles && (
+              <TextField
+                placeholder="How many vehicles are in your household?"
+                {...formCtrl("vehicles")}
+                inputMode="numeric"
+                type="number"
+                className="flex-1"
+              />
+            )}
+          </div>
+        )}
+        {!df.familiar && (
+          <div className="flex flex-row space-x-8">
+            {!df.familiar && (
+              <Autocomplete
+                options={["I'm a customer", "Somewhat", "Not at all"]}
+                className="flex-1"
+                value={form.familiar}
+                onChange={(e, val) => {
+                  updateForm((f) => {
+                    f.familiar = val;
+                  });
+                }}
+                renderInput={(props) => (
+                  <TextField
+                    error={!!requirements["familiar"]}
+                    {...props}
+                    placeholder="How familiar are you with Discount Tire"
+                  />
+                )}
+              />
+            )}
+          </div>
+        )}
       </div>
       <Button
         variant="contained"
@@ -135,18 +193,6 @@ const FormScreen = (props: { onComplete?: (form: FormState) => void }) => {
         START
       </Button>
     </>
-  );
-};
-
-const ManualButton = (props: ButtonProps & { children?: ReactNode }) => {
-  const { children, className, ...rest } = props;
-
-  return (
-    <div className={`${className} fixed left-8 bottom-8`}>
-      <Button {...rest} variant="contained">
-        {children}
-      </Button>
-    </div>
   );
 };
 
@@ -237,16 +283,21 @@ const TabletPage = () => {
     };
   }, [setPlayerId]);
 
-  const { gameState, mergeGameState, submitScore } = useContext(SocketContext);
+  const {
+    gameState,
+    setInGameState,
+    startTimer,
+    stopTimer,
+    resetPlayer,
+    submitScore,
+  } = useContext(SocketContext);
   let session: SessionState = { ...gameState[`player-${playerId}`] } || {
     phase: "form",
     form: undefined,
   };
   const updateSession = (updater: (s: Draft<SessionState>) => void) => {
     updater(session);
-    mergeGameState({
-      [`player-${playerId}`]: session,
-    });
+    setInGameState(`player-${playerId}`, session);
   };
 
   const { form, phase } = session;
@@ -258,7 +309,7 @@ const TabletPage = () => {
 
   return (
     <div className="w-screen h-screen flex flex-col items-center relative space-y-12">
-      <div className="flex flex-row w-full items-center justify-end space-x-8 p-4">
+      <div className="flex flex-row w-full items-center justify-end space-x-8 px-4 py-2">
         <div className="text-center font-bold">Player {playerId + 1}</div>
       </div>
       <div className="self-center">
@@ -287,12 +338,7 @@ const TabletPage = () => {
             variant="contained"
             onClick={() => {
               submitScore(session);
-              updateSession((x) => {
-                x.startTime = "";
-                x.endTime = "";
-                x.phase = "form";
-                x.form = null;
-              });
+              resetPlayer(playerId);
             }}
             sx={{
               fontSize: "50px",
@@ -301,43 +347,107 @@ const TabletPage = () => {
           >
             Approve
           </Button>
-          <ManualButton onClick={() => setManualDialogOpen((s) => !s)}>
-            CHANGE TIME
-          </ManualButton>
+          <Button
+            variant="contained"
+            onClick={() => {
+              submitScore(session);
+              updateSession((s) => {
+                s.phase = "ready";
+                s.startTime = undefined;
+                s.endTime = undefined;
+              });
+            }}
+            sx={{
+              fontSize: "30px",
+              px: "2rem",
+            }}
+          >
+            Play Again
+          </Button>
+          <div className={`fixed left-8 bottom-8`}>
+            <Button
+              variant="contained"
+              onClick={() => setManualDialogOpen((s) => !s)}
+            >
+              CHANGE TIME
+            </Button>
+          </div>
         </>
       ) : phase === "playing" ? (
         <>
-          <div
-            // onClick={() =>
-            //   updateSession((x) => {
-            //     x.endTime = DateTime.now().toISO();
-            //     x.phase = "finished";
-            //   })
-            // }
-            className="bg-black text-red-500 px-12 py-10 text-[50px] rounded-lg"
-          >
-            In Session
+          {session.manual ? (
+            <Button
+              variant="contained"
+              onClick={() => stopTimer(playerId)}
+              sx={{
+                fontSize: "50px",
+                px: "2rem",
+              }}
+            >
+              STOP
+            </Button>
+          ) : (
+            <div className="bg-gray-200 text-gray-500 px-12 py-10 text-[50px] rounded-lg font-bold">
+              In Session
+            </div>
+          )}
+          <div className={`fixed left-8 bottom-8`}>
+            <Button
+              variant="contained"
+              onClick={() => setManualDialogOpen((s) => !s)}
+            >
+              ENTER TIME
+            </Button>
           </div>
-          <ManualButton onClick={() => setManualDialogOpen((s) => !s)}>
-            ENTER TIME
-          </ManualButton>
+          <div className={"fixed right-8 bottom-8"}>
+            <Switch
+              checked={session.manual || false}
+              onChange={(e, ch) => {
+                updateSession((s) => {
+                  s.manual = ch;
+                });
+              }}
+            />
+            Tablet Timer
+          </div>
         </>
       ) : phase === "ready" ? (
         <>
-          <div
-            // onClick={() =>
-            //   updateSession((x) => {
-            //     x.startTime = DateTime.now().toISO();
-            //     x.phase = "playing";
-            //   })
-            // }
-            className="bg-black text-red-500 px-12 py-10 text-[50px] rounded-lg"
-          >
-            READY
+          {session.manual ? (
+            <Button
+              variant="contained"
+              onClick={() => startTimer(playerId)}
+              sx={{
+                fontSize: "50px",
+                px: "2rem",
+              }}
+            >
+              START
+            </Button>
+          ) : (
+            <div className="bg-gray-200 text-gray-500 px-12 py-10 text-[50px] rounded-lg font-bold">
+              READY
+            </div>
+          )}
+          <div className={`fixed left-8 bottom-8`}>
+            <Button
+              variant="contained"
+              onClick={() => setManualDialogOpen((s) => !s)}
+            >
+              ENTER TIME
+            </Button>
           </div>
-          <ManualButton onClick={() => setManualDialogOpen((s) => !s)}>
-            ENTER TIME
-          </ManualButton>
+          <div className={"fixed right-8 bottom-8"}>
+            <Switch
+              checked={session.manual || false}
+              onChange={(e, ch) => {
+                updateSession((s) => {
+                  s.manual = ch;
+                });
+              }}
+            />
+            Tablet Timer
+          </div>
         </>
       ) : (
         <FormScreen

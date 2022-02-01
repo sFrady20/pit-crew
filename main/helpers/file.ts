@@ -1,5 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from "fs-extra";
 import { debounce } from "lodash";
+import { AES, enc } from "crypto-js";
+
+const key = "fehjbf28u0n2f08ueb20fb2";
 
 //try to read data from file
 function syncFile<T>(path: string, defaultData: T) {
@@ -9,7 +12,9 @@ function syncFile<T>(path: string, defaultData: T) {
       const existingGameStateStr = readFileSync(path, {
         encoding: "utf8",
       });
-      data = JSON.parse(existingGameStateStr);
+      data = JSON.parse(
+        AES.decrypt(existingGameStateStr, key).toString(enc.Utf8)
+      );
     } catch (err) {
       console.error(err);
       data = undefined;
@@ -18,7 +23,7 @@ function syncFile<T>(path: string, defaultData: T) {
   if (!data) data = defaultData;
 
   const save = () => {
-    writeFileSync(path, JSON.stringify(data).toString(), {
+    writeFileSync(path, AES.encrypt(JSON.stringify(data), key).toString(), {
       encoding: "utf8",
     });
   };

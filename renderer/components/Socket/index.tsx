@@ -10,6 +10,8 @@ import io, { Socket } from "socket.io-client";
 import { createContext } from "use-context-selector";
 import { useImmer } from "use-immer";
 import { URL } from "url";
+import { map } from "lodash";
+import { DateTime } from "luxon";
 
 type GameStateType = any;
 
@@ -17,21 +19,31 @@ type SocketContextType = {
   ip: string;
   port: number;
   socket: Socket;
+  timeOffset: number;
   gameState: GameStateType;
   reload: () => void;
   mergeGameState: (updates: any) => void;
   setInGameState: (path: string, value: any) => void;
+  startTimer: (playerIndex: number) => void;
+  stopTimer: (playerIndex: number) => void;
+  resetPlayer: (playerIndex: number) => void;
+  deleteData: () => void;
   submitScore: (session: any) => void;
-  exportSessions: () => void;
+  exportSessions: (dates: [Date, Date]) => void;
 };
 const defaultSocketContext: SocketContextType = {
   ip: "",
   port: 9999,
+  timeOffset: 0,
   socket: {} as any,
   gameState: {} as any,
   reload: () => {},
   mergeGameState: () => {},
   setInGameState: () => {},
+  startTimer: () => {},
+  stopTimer: () => {},
+  resetPlayer: () => {},
+  deleteData: () => {},
   submitScore: () => {},
   exportSessions: () => {},
 };
@@ -49,10 +61,9 @@ const SocketProvider = (props: { children?: ReactNode }) => {
     url.pathname = "";
   }, [port]);
 
-  console.log(ip);
-
   const [socket, setSocket] = useState<Socket>();
   const [gameState, updateGameState] = useImmer<GameStateType>({});
+  const [timeOffset, setTimeOffset] = useState(0);
 
   useEffect(() => {
     const socket = io(`${ip}:${port}`);
@@ -63,9 +74,21 @@ const SocketProvider = (props: { children?: ReactNode }) => {
     });
     socket.emit("requestState");
 
+    socket.on("timesync", (serverMillis: number) => {
+      const offset = serverMillis - DateTime.now().toMillis();
+      setTimeOffset(offset);
+    });
+    socket.emit("timesync");
+
     setSocket(socket);
 
+    const syncInterval = setInterval(() => {
+      socket.emit("timesync");
+    }, 60000);
+
     return () => {
+      clearInterval(syncInterval);
+
       socket.disconnect();
       setSocket(undefined);
     };
@@ -88,12 +111,33 @@ const SocketProvider = (props: { children?: ReactNode }) => {
     [socket]
   );
 
+  const startTimer = useCallback(
+    (playerIndex) => {
+      socket?.emit("startTimer", playerIndex);
+    },
+    [socket]
+  );
+  const stopTimer = useCallback(
+    (playerIndex) => {
+      socket?.emit("stopTimer", playerIndex);
+    },
+    [socket]
+  );
+  const resetPlayer = useCallback(
+    (playerIndex) => {
+      socket?.emit("resetPlayer", playerIndex);
+    },
+    [socket]
+  );
   const submitScore = useCallback(
     (session) => {
       socket?.emit("submitScore", session);
     },
     [socket]
   );
+  const deleteData = useCallback(() => {
+    socket?.emit("deleteData");
+  }, [socket]);
 
   const exportSessions = useCallback(
     (dates?: [Date, Date]) => {
@@ -116,9 +160,14 @@ const SocketProvider = (props: { children?: ReactNode }) => {
         port,
         socket,
         gameState,
+        timeOffset,
         reload,
         mergeGameState,
         setInGameState,
+        startTimer,
+        stopTimer,
+        resetPlayer,
+        deleteData,
         submitScore,
         exportSessions,
       }}

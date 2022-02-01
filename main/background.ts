@@ -1,5 +1,5 @@
 import { app, shell } from "electron";
-import { each, map, merge, set } from "lodash";
+import { each, filter, forEach, map, merge, set } from "lodash";
 import { createWindow } from "./helpers";
 import syncFile from "./helpers/file";
 import { DateTime } from "luxon";
@@ -7,7 +7,7 @@ import SerialPort, { PortInfo } from "serialport";
 import Readline from "@serialport/parser-readline";
 import { stringify } from "csv-stringify/sync";
 import { writeFileSync } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
 import http, { Server } from "http";
 import { Server as SocketServer } from "socket.io";
 import serve from "serve-handler";
@@ -18,7 +18,7 @@ const paths = {
   state: "./dt-pit-state.data",
   leaderboard: "./dt-pit-leaders.data",
   sessions: "./dt-pit-sessions.data",
-  export: join(app.getAppPath(), "./dt-pit-export.csv"),
+  export: join(dirname(app.getAppPath()), "./dt-pit-export.csv"),
 };
 
 let server: Server;
@@ -29,7 +29,6 @@ if (isProd) {
   });
 } else {
   server = http.createServer();
-  app.setPath("userData", `${app.getPath("userData")} (development)`);
 }
 
 const io = new SocketServer(server, {
@@ -49,10 +48,6 @@ server.listen(9999, () => {
     paths.state,
     {}
   );
-  //setup leaderboard
-  const { data: leaderboard, enqueueSave: enqueueSaveLeaderboard } = syncFile<
-    any[]
-  >(paths.leaderboard, []);
   //setup sessions
   const { data: sessions, enqueueSave: enqueueSaveSessions } = syncFile<any[]>(
     paths.sessions,
@@ -64,14 +59,13 @@ server.listen(9999, () => {
     const score = typeof arg === "string" ? JSON.parse(arg) : arg;
     const submissionTime = DateTime.now().toISOTime();
 
-    console.log("SUBMITTING SCORE");
-
-    //save leaderboard
-    leaderboard.push({
+    //save session
+    const newSession = {
       ...score,
       submissionTime,
-    });
-    leaderboard.sort((a, b) => {
+    };
+    sessions.push(newSession);
+    sessions.sort((a, b) => {
       const aDiff = DateTime.fromISO(a.endTime)
         .diff(DateTime.fromISO(a.startTime))
         .toMillis();
@@ -81,27 +75,32 @@ server.listen(9999, () => {
       return aDiff === bDiff ? 0 : aDiff > bDiff ? 1 : -1;
     });
 
-    io.emit("setLeaderboard", leaderboard);
-    enqueueSaveLeaderboard();
-
-    //save session
-    sessions.push({
-      ...score,
-      submissionTime,
-    });
+    io.emit("setLeaderboard", sessions);
     enqueueSaveSessions();
+
+    io.emit("showNewScore", [sessions.indexOf(newSession), newSession]);
   };
 
-  const generateCSV = () => {
+  const generateCSV = (dates: [string, string]) => {
+    console.log([
+      DateTime.fromISO(dates[0]).toISODate(),
+      DateTime.fromISO(dates[1]).toISODate(),
+    ]);
+
     const body = stringify(
-      map(sessions, (session) => ({
-        ...session.form,
-        date: DateTime.fromISO(session.submissionTime).toFormat("D"),
-        time: DateTime.fromISO(session.submissionTime).toFormat("t"),
-        score: DateTime.fromISO(session.endTime)
-          .diff(DateTime.fromISO(session.startTime))
-          .toFormat("mm:ss.S"),
-      })),
+      filter(
+        map(sessions, (session) => ({
+          ...session.form,
+          date: DateTime.fromISO(session.submissionTime).toISODate(),
+          time: DateTime.fromISO(session.submissionTime).toFormat("t"),
+          score: DateTime.fromISO(session.endTime)
+            .diff(DateTime.fromISO(session.startTime))
+            .toFormat("mm:ss.S"),
+        })),
+        (x) =>
+          x.date > DateTime.fromISO(dates[0]).toISODate() &&
+          x.date < DateTime.fromISO(dates[1]).toISODate()
+      ),
       {
         header: true,
         columns: [
@@ -122,6 +121,35 @@ server.listen(9999, () => {
     writeFileSync(paths.export, body);
   };
 
+  const startTimer = (playerIndex: number) => {
+    const playerData = gameState[`player-${playerIndex}`] || {};
+    gameState[`player-${playerIndex}`] = playerData;
+
+    if (playerData.phase === "ready") {
+      playerData.phase = "playing";
+      playerData.startTime = DateTime.now().toISO();
+    }
+
+    io.emit("setState", gameState);
+  };
+
+  const stopTimer = (playerIndex: number) => {
+    const playerData = gameState[`player-${playerIndex}`] || {};
+    gameState[`player-${playerIndex}`] = playerData;
+
+    if (playerData.phase === "playing") {
+      playerData.phase = "finished";
+      playerData.endTime = DateTime.now().toISO();
+    }
+
+    io.emit("setState", gameState);
+  };
+
+  const resetPlayer = (playerIndex: number) => {
+    delete gameState[`player-${playerIndex}`];
+    io.emit("setState", gameState);
+  };
+
   const handleSerialData = (input: string) => {
     const matches = /(unit)?\s*(\d+)\s*(open|opened|close|closed)/gi.exec(
       input
@@ -134,7 +162,7 @@ server.listen(9999, () => {
     const playerData = gameState[`player-${playerIndex}`] || {};
     gameState[`player-${playerIndex}`] = playerData;
 
-    if (isOpen && playerData.phase === "ready") {
+    if (isOpen && playerData.phase === "ready" && !playerData.manual) {
       console.log(`Player ${playerIndex + 1} start!`);
       //start
       playerData.phase = "playing";
@@ -143,7 +171,7 @@ server.listen(9999, () => {
       io.emit("setState", gameState);
       enqueueSaveGameState();
     }
-    if (!isOpen && playerData.phase === "playing") {
+    if (!isOpen && playerData.phase === "playing" && !playerData.manual) {
       console.log(`Player ${playerIndex + 1} STOP!`);
       //end
       playerData.phase = "finished";
@@ -171,15 +199,29 @@ server.listen(9999, () => {
       enqueueSaveGameState();
     });
 
-    socket.on("requestLeaderboard", () => {
-      socket.emit("setLeaderboard", leaderboard);
+    socket.on("timesync", () => {
+      socket.emit("timesync", DateTime.now().toMillis());
     });
-    socket.on("exportSessions", () => {
-      generateCSV();
+
+    socket.on("startTimer", startTimer);
+    socket.on("stopTimer", stopTimer);
+    socket.on("resetPlayer", resetPlayer);
+    socket.on("submitScore", submitScore);
+
+    socket.on("requestLeaderboard", () => {
+      socket.emit("setLeaderboard", sessions);
+    });
+
+    socket.on("exportSessions", (dates: [string, string]) => {
+      generateCSV(dates);
       shell.showItemInFolder(paths.export);
     });
 
-    socket.on("submitScore", submitScore);
+    socket.on("deleteData", () => {
+      sessions.length = 0;
+      enqueueSaveSessions();
+      socket.emit("setLeaderboard", sessions);
+    });
   });
 
   //connect to (all) serial ports
