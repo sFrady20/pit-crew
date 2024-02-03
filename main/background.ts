@@ -1,5 +1,5 @@
 import { app, shell } from "electron";
-import { each, filter, forEach, map, merge, set } from "lodash";
+import { each, filter, map, merge, set } from "lodash";
 import { createWindow } from "./helpers";
 import syncFile from "./helpers/file";
 import { DateTime } from "luxon";
